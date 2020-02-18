@@ -400,7 +400,7 @@ public:
         std::cout << trieVocabIdxs[i].size() << std::endl;
       }
 
-      getNBestList(pathScores->val(), beamSize_, outPathScores, outKeys, first, trieVocabIdxs);
+      getNBestList(pathScores->val(), localBeamSize, outPathScores, outKeys, first, trieVocabIdxs);
 
       // if (!paraphrase_ && triePrune_) {
       //   //Everything that came out of the trie will have a score >1

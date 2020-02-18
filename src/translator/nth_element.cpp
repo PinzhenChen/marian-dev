@@ -8,6 +8,7 @@
 #include <iterator>
 #include <limits>
 #include <numeric>
+#include <iostream>
 
 namespace marian {
 
@@ -29,8 +30,10 @@ public:
                     const bool isFirst,
                     std::vector<std::vector<int>> trieVocabIdxs) {
     const auto vocabSize = scores->shape()[-1];
-    const auto inputN    = scores->shape()[-2];
-    const auto dimBatch  = scores->shape()[-4];
+    const auto inputN    = scores->shape()[-4]; // was [-2]
+    const auto dimBatch  = scores->shape()[-2]; // was [-4]
+    std::cout << scores->shape() << std::endl;
+    std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
     ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
     const float* scoresData = scores->data();
 
