@@ -23,17 +23,25 @@ public:
 
 
 public:
+
+
+  /****** dont use batched decoding! *******/
+
+
   void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShortlist]
                     size_t N,
                     std::vector<float>& outPathScores,
                     std::vector<unsigned>& outKeys,
                     const bool isFirst,
                     std::vector<std::vector<int>> trieVocabIdxs) {
+
     const auto vocabSize = scores->shape()[-1];
-    const auto inputN    = scores->shape()[-4]; // was [-2]
-    const auto dimBatch  = scores->shape()[-2]; // was [-4]
-    std::cout << scores->shape() << std::endl;
-    std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
+    const auto inputN    = scores->shape()[-4];
+    // const auto dimBatch  = scores->shape()[-4];
+    const size_t dimBatch = 1;
+
+    // std::cout << scores->shape() << std::endl;
+    // std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
     ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
     const float* scoresData = scores->data();
 
@@ -43,17 +51,19 @@ public:
     size_t pos = 0; // iterates through h_res and h_res_idx
 
     size_t batchOffset = inputN * vocabSize;
-    std::vector<int> idxs(batchOffset); // re-used for each batch
-    std::iota(idxs.begin(), idxs.end(), 0);
-
+    // std::vector<int> idxs(batchOffset); // re-used for each batch
+    // std::iota(idxs.begin(), idxs.end(), 0);
+    // std::cout << "before batch loop\n";
     for(size_t batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
-
+      auto idxs = trieVocabIdxs[batchIdx];
+      // std::cout << "loop1\n";
       std::partial_sort(
         idxs.begin(),
-        idxs.begin() + N,
+        idxs.begin() + std::min(N, idxs.size()),
         idxs.end(),
-        [&](int a, int b) { return scoresData[a] > scoresData[b]; }
+        [&](int a, int b) {return scoresData[a] > scoresData[b]; }
       );
+      // std::cout << "finished partial sort\n";
 
       for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
         int idx = idxs[temp];
@@ -61,8 +71,8 @@ public:
         h_res[pos] = scoresData[idx];
         ++pos;
       }
-
-      scoresData += batchOffset;
+      // std::cout << "finished copying to h_res and h_res_idx\n";
+      //scoresData += batchOffset;
     }
     getPairs(/*cumulativeBeamSizes.back(),*/ outKeys, outPathScores);
   }
@@ -71,8 +81,10 @@ private:
   void getPairs(/*size_t number,*/
                 std::vector<unsigned>& outKeys,
                 std::vector<float>& outValues) {
+    // std::cout << "in getPairs()\n";
     std::copy(h_res_idx.begin(), h_res_idx.end(), std::back_inserter(outKeys));
     std::copy(h_res    .begin(), h_res    .end(), std::back_inserter(outValues));
+    // std::cout << "finished getPairs()\n";
     //lastN_ = number;
   }
 

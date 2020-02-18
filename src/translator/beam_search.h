@@ -207,7 +207,9 @@ public:
           newBeam.push_back(hyp);
           allFake = false;
         } else {
-          newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+          // newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+          newBeam.push_back(hyp);
+          allFake = false;
         }
         if (allFake) {
           newBeam.resize(0);
@@ -384,20 +386,19 @@ public:
       std::vector<std::vector<int>> trieVocabIdxs(dimBatch); // dimBatch * min(beamSize, numContinuations)
 
       for (int i = 0; i < dimBatch; ++i) { // loop over sentences
-        std::cout << "i: " << i << std::endl;
+        // std::cout << "i: " << i << std::endl;
         for (int j = 0; j < localBeamSize; ++j) { // loop over hypotheses
-          std::cout << "j: " << j << std::endl;
+          // std::cout << "j: " << j << std::endl;
           auto curTrieNode = beams[i][j]->GetTrieNode();
           if (curTrieNode != NULL) { // check for null pointers
             for(auto&& node : *curTrieNode) {
               auto index = node.id_ + i * localBeamSize * dimTrgVoc + j * dimTrgVoc;
-              std::cout << index << " ";
               trieVocabIdxs[i].push_back(index);
             }
-            std::cout << std::endl;
           }
         }
-        std::cout << trieVocabIdxs[i].size() << std::endl;
+
+        // std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
       }
 
       getNBestList(pathScores->val(), localBeamSize, outPathScores, outKeys, first, trieVocabIdxs);
