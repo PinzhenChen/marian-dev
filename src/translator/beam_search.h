@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <iostream>
 
 #include "marian.h"
 #include "translator/history.h"
@@ -36,9 +37,9 @@ public:
         trie_(trie) {
           if (options_->get<std::string>("trie-pruning-path") != "") {
             triePrune_ = true;
-            if (options_->get<std::string>("paraphrase") == "true") {
-              paraphrase_ = true;
-            }
+            // if (options_->get<std::string>("paraphrase") == "true") {
+            //   paraphrase_ = true;
+            // }
           }
         }
 
@@ -151,44 +152,44 @@ public:
     return align;
   }
 
-  void bumpScores(Tensor in_, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
-    int nColumns = in_->shape()[-1];
+  // void bumpScores(Tensor in_, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
+  //   int nColumns = in_->shape()[-1];
 
-    float* in = in_->data();
-    if (!currTrieNode) //Check for null ptrs
-      return;
-    std::vector<uint32_t> idxs_(currTrieNode->size());
-    for(auto&& node : *currTrieNode) {
-      auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
-      if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
-        idxs_.push_back(index);
-      } else {
-        in[index] += bumpVal;
-      }
-    }
-    if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
-      gBumpScores(idxs_, in, bumpVal);
-  }
+  //   float* in = in_->data();
+  //   if (!currTrieNode) //Check for null ptrs
+  //     return;
+  //   std::vector<uint32_t> idxs_(currTrieNode->size());
+  //   for(auto&& node : *currTrieNode) {
+  //     auto index = node.id_ + rowNum*nColumns; //node.id_ is a vocab ID
+  //     if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
+  //       idxs_.push_back(index);
+  //     } else {
+  //       in[index] += bumpVal;
+  //     }
+  //   }
+  //   if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
+  //     gBumpScores(idxs_, in, bumpVal);
+  // }
 
-  void bumpScoresBatch(Tensor in_, size_t batchID, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
-    int nColumns = in_->shape()[-1];
-    int beamSize = in_->shape()[2];
+  // void bumpScoresBatch(Tensor in_, size_t batchID, size_t rowNum, std::vector<trieannosaurus::Node>* currTrieNode, float bumpVal) {
+  //   int nColumns = in_->shape()[-1];
+  //   int beamSize = in_->shape()[2];
 
-    float* in = in_->data();
-    if (!currTrieNode) //Check for null ptrs
-      return;
-    std::vector<uint32_t> idxs_(currTrieNode->size());
-    for(auto&& node : *currTrieNode) {
-      auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
-      if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
-        idxs_.push_back(index);
-      } else {
-        in[index] += bumpVal;
-      }
-    }
-    if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
-      gBumpScores(idxs_, in, bumpVal);
-  }
+  //   float* in = in_->data();
+  //   if (!currTrieNode) //Check for null ptrs
+  //     return;
+  //   std::vector<uint32_t> idxs_(currTrieNode->size());
+  //   for(auto&& node : *currTrieNode) {
+  //     auto index = node.id_ + batchID*nColumns*beamSize + rowNum*nColumns; //node.id_ is a vocab ID
+  //     if (in_->getBackend()->getDeviceId().type == DeviceType::gpu) {
+  //       idxs_.push_back(index);
+  //     } else {
+  //       in[index] += bumpVal;
+  //     }
+  //   }
+  //   if (in_->getBackend()->getDeviceId().type == DeviceType::gpu)
+  //     gBumpScores(idxs_, in, bumpVal);
+  // }
 
   /* When reverse is false, we filter out beams that do not
    * have continuations. Otherwise the function filters out
@@ -217,28 +218,28 @@ public:
     return newBeams;
   }
 
-    Beams reverseFilterForContinuations(const Beams& beams, size_t maxLength) {
-    Beams newBeams;
-    for(auto beam : beams) {
-      Beam newBeam;
-      bool allFake = true; /* Keep track if all hypothesis we have are placeholders
-                            * if that happens we should end search prematurely
-                            * by setting the beam to empty*/
-      for (auto hyp : beam) {
-        if (hyp->hasTrieContinuatuions() || hyp->GetLength() >= maxLength ) {
-          newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
-        } else {
-          newBeam.push_back(hyp);
-          allFake = false;
-        }
-        if (allFake) {
-          newBeam.resize(0);
-        }
-      }
-      newBeams.push_back(newBeam);
-    }
-    return newBeams;
-  }
+  //   Beams reverseFilterForContinuations(const Beams& beams, size_t maxLength) {
+  //   Beams newBeams;
+  //   for(auto beam : beams) {
+  //     Beam newBeam;
+  //     bool allFake = true; /* Keep track if all hypothesis we have are placeholders
+  //                           * if that happens we should end search prematurely
+  //                           * by setting the beam to empty*/
+  //     for (auto hyp : beam) {
+  //       if (hyp->hasTrieContinuatuions() || hyp->GetLength() >= maxLength ) {
+  //         newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+  //       } else {
+  //         newBeam.push_back(hyp);
+  //         allFake = false;
+  //       }
+  //       if (allFake) {
+  //         newBeam.resize(0);
+  //       }
+  //     }
+  //     newBeams.push_back(newBeam);
+  //   }
+  //   return newBeams;
+  // }
 
   Beams pruneBeam(const Beams& beams) {
     Beams newBeams;
@@ -363,35 +364,54 @@ public:
       std::vector<unsigned int> outKeys;
       std::vector<float> outPathScores;
 
-      std::vector<size_t> beamSizes(dimBatch, localBeamSize);
+      // std::vector<size_t> beamSizes(dimBatch, localBeamSize);
       //Pathscores if of shape {12, 1, 1, 36000}} AFTER the first step, otherwise it's {1, 1, 1, 36000}
       //UNLESS It's batched then DIM0 is the batch size and DIM2 is the TrieSize
 
-      if (!paraphrase_ && !first && triePrune_) {
-        for (int i = 0; i < beams.size(); i++) {
-          for (size_t j = 0; j < beams[i].size(); j++) {
-            if (dimBatch > 1) {
-              bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 10000000.0f);
-            } else {
-              bumpScores(pathScores->val(), j, beams[i][j]->GetTrieNode(), 10000000.0f);
-            }
-          }
-        }
-      }
-
-      getNBestList(beamSizes, pathScores->val(), outPathScores, outKeys, first);
-
-      if (!paraphrase_ && triePrune_) {
-        //Everything that came out of the trie will have a score >1
-        //Hence fix the scores
-        for (auto&& score : outPathScores) {
-          if (score > 1) {
-          score -= 10000000.0f;
-          }
-        }
-      }
+      // if (!paraphrase_ && !first && triePrune_) {
+      //   for (int i = 0; i < beams.size(); i++) {
+      //     for (size_t j = 0; j < beams[i].size(); j++) {
+      //       if (dimBatch > 1) {
+      //         bumpScoresBatch(pathScores->val(), i, j, beams[i][j]->GetTrieNode(), 10000000.0f);
+      //       } else {
+      //         bumpScores(pathScores->val(), j, beams[i][j]->GetTrieNode(), 10000000.0f);
+      //       }
+      //     }
+      //   }
+      // }
 
       int dimTrgVoc = pathScores->shape()[-1];
+      std::vector<std::vector<int>> trieVocabIdxs(dimBatch); // dimBatch * min(beamSize, numContinuations)
+
+      for (int i = 0; i < dimBatch; ++i) { // loop over sentences
+        std::cout << "i: " << i << std::endl;
+        for (int j = 0; j < localBeamSize; ++j) { // loop over hypotheses
+          std::cout << "j: " << j << std::endl;
+          auto curTrieNode = beams[i][j]->GetTrieNode();
+          if (curTrieNode != NULL) { // check for null pointers
+            for(auto&& node : *curTrieNode) {
+              auto index = node.id_ + i * localBeamSize * dimTrgVoc + j * dimTrgVoc;
+              std::cout << index << " ";
+              trieVocabIdxs[i].push_back(index);
+            }
+            std::cout << std::endl;
+          }
+        }
+        std::cout << trieVocabIdxs[i].size() << std::endl;
+      }
+
+      getNBestList(pathScores->val(), beamSize_, outPathScores, outKeys, first, trieVocabIdxs);
+
+      // if (!paraphrase_ && triePrune_) {
+      //   //Everything that came out of the trie will have a score >1
+      //   //Hence fix the scores
+      //   for (auto&& score : outPathScores) {
+      //     if (score > 1) {
+      //     score -= 10000000.0f;
+      //     }
+      //   }
+      // }
+
       beams = toHyps(outKeys,
                      outPathScores,
                      dimTrgVoc,
@@ -401,16 +421,19 @@ public:
                      first,
                      batch);
 
-      if ((!first || !paraphrase_) && triePrune_){ // only prune if we are translating, or if
-                                                   // we are not at the first word while paraphrasing
-        size_t maxSentenceLength = std::ceil(options_->get<float>("max-length-factor")* batch->front()->batchWidth());
-        if (paraphrase_) {
-          beams = reverseFilterForContinuations(beams, maxSentenceLength);
-        } else {
-          beams = filterForContinuations(beams, maxSentenceLength);
-        }
+      size_t maxSentenceLength = std::ceil(options_->get<float>("max-length-factor")* batch->front()->batchWidth());
+      beams = filterForContinuations(beams, maxSentenceLength);
+
+      // if ((!first || !paraphrase_) && triePrune_){ // only prune if we are translating, or if
+      //                                              // we are not at the first word while paraphrasing
+      // size_t maxSentenceLength = std::ceil(options_->get<float>("max-length-factor")* batch->front()->batchWidth());
+      //   if (paraphrase_) {
+      //     beams = reverseFilterForContinuations(beams, maxSentenceLength);
+      //   } else {
+      //     beams = filterForContinuations(beams, maxSentenceLength);
+      //   }
         
-      }
+      // }
 
       auto prunedBeams = pruneBeam(beams);
       for(int i = 0; i < dimBatch; ++i) {
