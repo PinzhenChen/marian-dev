@@ -45,10 +45,9 @@ public:
     ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
     const float* scoresData = scores->data();
 
-    size_t maxSize = N * dimBatch;
-    h_res.resize(maxSize);
-    h_res_idx.resize(maxSize);
-    size_t pos = 0; // iterates through h_res and h_res_idx
+    // size_t maxSize = N * dimBatch;
+    h_res.clear();
+    h_res_idx.clear();
 
     size_t batchOffset = inputN * vocabSize;
     // std::vector<int> idxs(batchOffset); // re-used for each batch
@@ -65,16 +64,21 @@ public:
       );
       // std::cout << "finished partial sort\n";
 
+      // std::cout << "selected idxs: ";
+      // int pos = batchIdx * N; // iterates through h_res and h_res_idx
       for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
         int idx = idxs[temp];
-        h_res_idx[pos] = idx + batchIdx * batchOffset;
-        h_res[pos] = scoresData[idx];
-        ++pos;
+        // std::cout << idx % vocabSize << " ";
+        h_res_idx.push_back(idx + batchIdx * batchOffset);
+        h_res.push_back(scoresData[idx]);
+        // ++pos;
       }
+      // std::cout << std::endl;
       // std::cout << "finished copying to h_res and h_res_idx\n";
-      //scoresData += batchOffset;
+      scoresData += batchOffset;
     }
     getPairs(/*cumulativeBeamSizes.back(),*/ outKeys, outPathScores);
+    // std::cout << "finished getPairs(). Size of h_res is:" << outKeys.size() << "\n";
   }
 
 private:
@@ -84,7 +88,7 @@ private:
     // std::cout << "in getPairs()\n";
     std::copy(h_res_idx.begin(), h_res_idx.end(), std::back_inserter(outKeys));
     std::copy(h_res    .begin(), h_res    .end(), std::back_inserter(outValues));
-    // std::cout << "finished getPairs()\n";
+    
     //lastN_ = number;
   }
 

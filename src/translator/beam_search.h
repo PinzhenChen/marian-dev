@@ -195,25 +195,42 @@ public:
    * have continuations. Otherwise the function filters out
    * beams that have continuations. This is for paraphrasing
    * without using original words.*/
-  Beams filterForContinuations(const Beams& beams, size_t maxLength) {
+  // Beams filterForContinuations(const Beams& beams, size_t maxLength) {
+  //   Beams newBeams;
+  //   for(auto beam : beams) {
+  //     Beam newBeam;
+  //     bool allFake = true; /* Keep track if all hypothesis we have are placeholders
+  //                           * if that happens we should end search prematurely
+  //                           * by setting the beam to empty*/
+  //     for (auto hyp : beam) {
+  //       if (hyp->hasTrieContinuatuions() && hyp->GetLength() < maxLength ) {
+  //         newBeam.push_back(hyp);
+  //         allFake = false;
+  //       } else {
+  //         newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
+  //         newBeam.push_back(hyp);
+  //       }
+  //       if (allFake) {
+  //         newBeam.resize(0);
+  //       }
+  //     }
+  //     newBeams.push_back(newBeam);
+  //   }
+  //   return newBeams;
+  // }
+
+
+  Beams advanceTriePointers(const Beams& beams) {
     Beams newBeams;
     for(auto beam : beams) {
       Beam newBeam;
-      bool allFake = true; /* Keep track if all hypothesis we have are placeholders
-                            * if that happens we should end search prematurely
-                            * by setting the beam to empty*/
       for (auto hyp : beam) {
-        if (hyp->hasTrieContinuatuions() && hyp->GetLength() < maxLength ) {
-          newBeam.push_back(hyp);
-          allFake = false;
+        if (hyp->hasTrieContinuatuions()) {
         } else {
-          // newBeam.push_back(New<Hypothesis>(New<Hypothesis>(trie_), 1, 0, -9999));
-          newBeam.push_back(hyp);
-          allFake = false;
+          std::cout << "WARNING. A sentence generated is not in the trie.\n";
         }
-        if (allFake) {
-          newBeam.resize(0);
-        }
+
+        newBeam.push_back(hyp);
       }
       newBeams.push_back(newBeam);
     }
@@ -383,18 +400,33 @@ public:
       // }
 
       int dimTrgVoc = pathScores->shape()[-1];
-      std::vector<std::vector<int>> trieVocabIdxs(dimBatch); // dimBatch * min(beamSize, numContinuations)
+      std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
 
+      // std::cout << beams.size() << " by " << beams[0].size() << std::endl;
       for (int i = 0; i < dimBatch; ++i) { // loop over sentences
         // std::cout << "i: " << i << std::endl;
+
         for (int j = 0; j < localBeamSize; ++j) { // loop over hypotheses
+
+          //std::cout << beams[i][j]->GetWord() << std::endl;
           // std::cout << "j: " << j << std::endl;
+
+          // std::cout << "size of first batch (sent): " << beams[i].size() << "\n";
+
+          // std::cout << "size of first hyp: " << beams[i][j]->GetLength() << "\n";
+
           auto curTrieNode = beams[i][j]->GetTrieNode();
-          if (curTrieNode != NULL) { // check for null pointers
+          // std::cout << "retrieved continuations:";
+          if (curTrieNode != nullptr) { // check for null pointers
+
+            // std::cout << curTrieNode->size() << std::endl ;
             for(auto&& node : *curTrieNode) {
-              auto index = node.id_ + i * localBeamSize * dimTrgVoc + j * dimTrgVoc;
+              // auto index = node.id_ + i * localBeamSize * dimTrgVoc + j * dimTrgVoc;
+              auto index = node.id_ + j * dimTrgVoc;
+              // std::cout << "\tindex and node id: " << index << " and " << node.id_ << " | ";
               trieVocabIdxs[i].push_back(index);
             }
+            // std::cout << "\n";
           }
         }
 
@@ -421,9 +453,7 @@ public:
                      localBeamSize,
                      first,
                      batch);
-
-      size_t maxSentenceLength = std::ceil(options_->get<float>("max-length-factor")* batch->front()->batchWidth());
-      beams = filterForContinuations(beams, maxSentenceLength);
+      // std::cout << "toHyps(), " << "size of 'beams': " << beams.size() << " and size of 'beams[0]': " << beams[0].size() << "\n";
 
       // if ((!first || !paraphrase_) && triePrune_){ // only prune if we are translating, or if
       //                                              // we are not at the first word while paraphrasing
@@ -435,6 +465,12 @@ public:
       //   }
         
       // }
+
+
+      // size_t maxSentenceLength = std::ceil(options_->get<float>("max-length-factor")* batch->front()->batchWidth());
+      beams = advanceTriePointers(beams);
+
+      // std::cout << "advanced pointers, " << "size of 'beams': " << beams.size() << " and size of 'beams[0]': " << beams[0].size() << "\n";
 
       auto prunedBeams = pruneBeam(beams);
       for(int i = 0; i < dimBatch; ++i) {
@@ -449,6 +485,8 @@ public:
       }
       beams = prunedBeams;
 
+      // std::cout << "pruned beams" << "size of 'beams': " << beams.size() << " and size of 'beams[0]': " << beams[0].size() << "\n";
+
       // determine beam size for next sentence, as max over still-active sentences
       if(!first) {
         size_t maxBeam = 0;
@@ -458,7 +496,7 @@ public:
         localBeamSize = maxBeam;
       }
       first = false;
-
+      // std::cout << "----------\n";
     } while(localBeamSize != 0 && !final); // end of main loop over output tokens
 
     return histories;
