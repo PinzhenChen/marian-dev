@@ -58,8 +58,8 @@ public:
     // const auto dimBatch  = scores->shape()[-4];
     const size_t dimBatch = 1;
 
-    // std::cout << scores->shape() << std::endl;
-    // std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
+    std::cout << scores->shape() << std::endl;
+    std::cout << "First? " << isFirst << ", inputN: " << inputN << ", N: " << N << std::endl;
     ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
     const float* scoresData = scores->data();
 
@@ -67,13 +67,19 @@ public:
     h_res.clear();
     h_res_idx.clear();
 
-    size_t batchOffset = inputN * vocabSize;
+    size_t batchOffset = N * vocabSize;
     // std::vector<int> idxs(batchOffset); // re-used for each batch
     // std::iota(idxs.begin(), idxs.end(), 0);
     // std::cout << "before batch loop\n";
     for(size_t batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
       auto idxs = trieVocabIdxs[batchIdx]; // idxs for all hyps
-      //std::cout << "size of idxs for current batch: " << idxs.size() << std::endl;
+      std::cout << "size of idxs for current batch: " << idxs.size() << std::endl;
+      for(size_t i = 0; i < idxs.size(); ++i) {
+        // if (vocabMap[idxs[i] % vocabSize] == "around" || vocabMap[idxs[i] % vocabSize] == "(" || vocabMap[idxs[i] % vocabSize] == "<unk>" || vocabMap[idxs[i] % vocabSize] == "," ) {
+          std::cout << "idx, vocab and score: " << idxs[i] << ", " << vocabMap[idxs[i] % vocabSize] << ", " << scoresData[idxs[i]] << " | ";
+        }
+      }
+      std::cout << "\n";
       // std::cout << "loop1\n";
       std::partial_sort(
         idxs.begin(),
@@ -87,7 +93,7 @@ public:
       // int pos = batchIdx * N; // iterates through h_res and h_res_idx
       for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
         int idx = idxs[temp];
-        std::cout << "(" << idx << ", " << vocabMap[idx % vocabSize] << ") ";
+        std::cout << "(" << idx << ", " << idx % vocabSize << ", " << vocabMap[idx % vocabSize] << ") ";
         h_res_idx.push_back(idx + batchIdx * batchOffset);
         h_res.push_back(scoresData[idx]);
         // ++pos;

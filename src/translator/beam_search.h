@@ -449,6 +449,9 @@ public:
             std::cout << "\n";
             
           }
+          if (first) {
+            break;
+          }
         }
         std::cout << "\n";
         // std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
