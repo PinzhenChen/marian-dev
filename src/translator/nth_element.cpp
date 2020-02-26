@@ -76,8 +76,8 @@ public:
       std::cout << "size of idxs for current batch: " << idxs.size() << std::endl;
       for(size_t i = 0; i < idxs.size(); ++i) {
         // if (vocabMap[idxs[i] % vocabSize] == "around" || vocabMap[idxs[i] % vocabSize] == "(" || vocabMap[idxs[i] % vocabSize] == "<unk>" || vocabMap[idxs[i] % vocabSize] == "," ) {
-          std::cout << "idx, vocab and score: " << idxs[i] << ", " << vocabMap[idxs[i] % vocabSize] << ", " << scoresData[idxs[i]] << " | ";
-        }
+          // std::cout << "idx, vocab and score: " << idxs[i] << ", " << vocabMap[idxs[i] % vocabSize] << ", " << scoresData[idxs[i]] << " | ";
+        // }
       }
       std::cout << "\n";
       // std::cout << "loop1\n";
