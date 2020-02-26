@@ -9,6 +9,10 @@
 #include "translator/helpers.h"
 #include "translator/nth_element.h"
 
+#include <fstream>
+#include <map>
+#include <boost/algorithm/string.hpp>
+
 namespace marian {
 
 class BeamSearch {
@@ -399,10 +403,23 @@ public:
       //   }
       // }
 
-      int dimTrgVoc = pathScores->shape()[-1];
+      std::map<int, std::string> vocabMap;
+      std::string delimiter = ": ";
+      std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
+      int count = 0;
+      for( std::string line; getline( input, line ); ) {
+        boost::trim_right(line);
+        std::string token = line.substr(0, line.find(delimiter));
+        // std::cout << token << " is " << count << ", ";
+        vocabMap[count] = token;
+        ++count;
+      }
+
+      int dimTrgVoc = pathScores->shape()[-1];  // vocab size
       std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
 
-      // std::cout << beams.size() << " by " << beams[0].size() << std::endl;
+      // the line below is actually (num of sentences) * (num of hyps)
+      std::cout << beams.size() << " by " << beams[0].size() << std::endl;
       for (int i = 0; i < dimBatch; ++i) { // loop over sentences
         // std::cout << "i: " << i << std::endl;
 
@@ -420,16 +437,20 @@ public:
           if (curTrieNode != nullptr) { // check for null pointers
 
             // std::cout << curTrieNode->size() << std::endl ;
+
+            std::cout << "hyp " << j << " vocab: ";
             for(auto&& node : *curTrieNode) {
               // auto index = node.id_ + i * localBeamSize * dimTrgVoc + j * dimTrgVoc;
-              auto index = node.id_ + j * dimTrgVoc;
-              // std::cout << "\tindex and node id: " << index << " and " << node.id_ << " | ";
+              auto index = node.id_ + j * dimTrgVoc; 
+              std::cout << vocabMap[node.id_] << " | ";
               trieVocabIdxs[i].push_back(index);
             }
-            // std::cout << "\n";
+
+            std::cout << "\n";
+            
           }
         }
-
+        std::cout << "\n";
         // std::cout << "num of continuations: " << trieVocabIdxs[i].size() << std::endl;
       }
 
@@ -453,7 +474,7 @@ public:
                      localBeamSize,
                      first,
                      batch);
-      // std::cout << "toHyps(), " << "size of 'beams': " << beams.size() << " and size of 'beams[0]': " << beams[0].size() << "\n";
+      std::cout << "toHyps(), " << "size of 'beams': " << beams.size() << " and size of 'beams[0]': " << beams[0].size() << "\n";
 
       // if ((!first || !paraphrase_) && triePrune_){ // only prune if we are translating, or if
       //                                              // we are not at the first word while paraphrasing
@@ -470,7 +491,7 @@ public:
       // size_t maxSentenceLength = std::ceil(options_->get<float>("max-length-factor")* batch->front()->batchWidth());
       beams = advanceTriePointers(beams);
 
-      // std::cout << "advanced pointers, " << "size of 'beams': " << beams.size() << " and size of 'beams[0]': " << beams[0].size() << "\n";
+      std::cout << "advanced pointers, " << "size of 'beams': " << beams.size() << " and size of 'beams[0]': " << beams[0].size() << "\n";
 
       auto prunedBeams = pruneBeam(beams);
       for(int i = 0; i < dimBatch; ++i) {
@@ -485,7 +506,7 @@ public:
       }
       beams = prunedBeams;
 
-      // std::cout << "pruned beams" << "size of 'beams': " << beams.size() << " and size of 'beams[0]': " << beams[0].size() << "\n";
+      std::cout << "pruned beams" << "size of 'beams': " << beams.size() << " and size of 'beams[0]': " << beams[0].size() << "\n";
 
       // determine beam size for next sentence, as max over still-active sentences
       if(!first) {
@@ -496,7 +517,10 @@ public:
         localBeamSize = maxBeam;
       }
       first = false;
-      // std::cout << "----------\n";
+      std::cout << "----------\n";
+      // if (localBeamSize > 1) {
+        // localBeamSize = std::max(localBeamSize / 2, (size_t)1);
+      // }
     } while(localBeamSize != 0 && !final); // end of main loop over output tokens
 
     return histories;

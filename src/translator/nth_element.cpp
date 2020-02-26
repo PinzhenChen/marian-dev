@@ -9,6 +9,9 @@
 #include <limits>
 #include <numeric>
 #include <iostream>
+#include <fstream>
+#include <map>
+#include <boost/algorithm/string.hpp>
 
 namespace marian {
 
@@ -35,6 +38,21 @@ public:
                     const bool isFirst,
                     std::vector<std::vector<int>> trieVocabIdxs) {
 
+    
+    std::map<int, std::string> vocabMap;
+    std::string delimiter = ": ";
+    std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
+    int count = 0;
+    for( std::string line; getline( input, line ); ) {
+      boost::trim_right(line);
+      std::string token = line.substr(0, line.find(delimiter));
+      // std::cout << token << " is " << count << ", ";
+      vocabMap[count] = token;
+      ++count;
+    }
+
+
+
     const auto vocabSize = scores->shape()[-1];
     const auto inputN    = scores->shape()[-4];
     // const auto dimBatch  = scores->shape()[-4];
@@ -54,7 +72,8 @@ public:
     // std::iota(idxs.begin(), idxs.end(), 0);
     // std::cout << "before batch loop\n";
     for(size_t batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
-      auto idxs = trieVocabIdxs[batchIdx];
+      auto idxs = trieVocabIdxs[batchIdx]; // idxs for all hyps
+      //std::cout << "size of idxs for current batch: " << idxs.size() << std::endl;
       // std::cout << "loop1\n";
       std::partial_sort(
         idxs.begin(),
@@ -64,21 +83,21 @@ public:
       );
       // std::cout << "finished partial sort\n";
 
-      // std::cout << "selected idxs: ";
+      std::cout << "selected idxs: ";
       // int pos = batchIdx * N; // iterates through h_res and h_res_idx
       for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
         int idx = idxs[temp];
-        // std::cout << idx % vocabSize << " ";
+        std::cout << "(" << idx << ", " << vocabMap[idx % vocabSize] << ") ";
         h_res_idx.push_back(idx + batchIdx * batchOffset);
         h_res.push_back(scoresData[idx]);
         // ++pos;
       }
-      // std::cout << std::endl;
-      // std::cout << "finished copying to h_res and h_res_idx\n";
+      std::cout << std::endl;
+      std::cout << "finished copying to h_res and h_res_idx\n";
       scoresData += batchOffset;
     }
     getPairs(/*cumulativeBeamSizes.back(),*/ outKeys, outPathScores);
-    // std::cout << "finished getPairs(). Size of h_res is:" << outKeys.size() << "\n";
+    std::cout << "finished getPairs(). Size of h_res is:" << outKeys.size() << "\n";
   }
 
 private:
