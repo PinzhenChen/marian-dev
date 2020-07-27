@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <iostream>
 
 #include "marian.h"
 #include "translator/history.h"
@@ -8,6 +9,10 @@
 
 #include "translator/helpers.h"
 #include "translator/nth_element.h"
+
+#include <fstream>
+#include <map>
+#include <boost/algorithm/string.hpp>
 
 namespace marian {
 
@@ -18,17 +23,35 @@ private:
   size_t beamSize_;
   Ptr<const Vocab> trgVocab_;
 
+//<<<<<<< trie-pre-exp-forest
+  bool triePrune_ = false;
+  size_t beamSizeDivideBy;
+  size_t beamSizeDivideMin;
+  std::vector<trieannosaurus::Node>* trie_;
+
+//  static constexpr auto INVALID_PATH_SCORE = -9999; // (@TODO: change to -9999.0 once C++ allows that)
+//  static constexpr auto PURGE_BATCH = true; // @TODO: diagnostic, to-be-removed once confirmed there are no issues.
+//=======
   const float INVALID_PATH_SCORE = std::numeric_limits<float>::lowest(); // @TODO: observe this closely
   const bool PURGE_BATCH = true; // @TODO: diagnostic, to-be-removed once confirmed there are no issues.
+//>>>>>>> intgemm_reintegrated_computestats
 
 public:
   BeamSearch(Ptr<Options> options,
              const std::vector<Ptr<Scorer>>& scorers,
-             const Ptr<const Vocab> trgVocab)
+             const Ptr<const Vocab> trgVocab,
+             std::vector<trieannosaurus::Node>* trie=nullptr)
       : options_(options),
         scorers_(scorers),
         beamSize_(options_->get<size_t>("beam-size")),
-        trgVocab_(trgVocab) {}
+        trgVocab_(trgVocab),
+        trie_(trie) {
+          if (options_->get<std::string>("trie-pruning-path") != "") {
+            triePrune_ = true;
+          }
+          beamSizeDivideBy = options_->get<float>("beam-size-divide-by");
+          beamSizeDivideMin = options_->get<size_t>("beam-size-min");
+        }
 
   // combine new expandedPathScores and previous beams into new set of beams
   Beams toHyps(const std::vector<unsigned int>& nBestKeys, // [currentDimBatch, beamSize] flattened -> ((batchIdx, beamHypIdx) flattened, word idx) flattened
@@ -41,6 +64,7 @@ public:
                Ptr<FactoredVocab/*const*/> factoredVocab, size_t factorGroup,
                const std::vector<bool>& dropBatchEntries, // [origDimBatch] - empty source batch entries are marked with true, should be cleared after first use.
                const std::vector<IndexType>& batchIdxMap) const { // [origBatchIdx -> currentBatchIdx]
+
     std::vector<float> align; // collects alignment information from the last executed time step
     if(options_->hasAndNotEmpty("alignment") && factorGroup == 0)
       align = scorers_[0]->getAlignment(); // [beam depth * max src length * current batch size] -> P(s|t); use alignments from the first scorer, even if ensemble,
@@ -68,12 +92,19 @@ public:
       // They can be between 0 and (vocabSize * nBestBeamSize * batchSize)-1.
       // (beamHypIdx refers to the GPU tensors, *not* the beams[] array; they are not the same in case of purging)
       const auto  key       = nBestKeys[i];
-      
+
       // decompose key into individual indices (batchIdx, beamHypIdx, wordIdx)
       const auto beamHypIdx      = (key / vocabSize) % nBestBeamSize;
       const auto currentBatchIdx = (key / vocabSize) / nBestBeamSize;
       const auto origBatchIdx    = reverseBatchIdxMap.empty() ? currentBatchIdx : reverseBatchIdxMap[currentBatchIdx]; // map currentBatchIdx back into original position within starting maximal batch size, required to find correct beam
 
+/*<<<<<<< trie-pre-exp-forest
+      bool dropHyp = !dropBatchEntries.empty() && dropBatchEntries[origBatchIdx];
+
+      // if we force=drop the hypothesis, assign EOS, otherwise the expected word id.
+      const auto wordIdx    = dropHyp ? trgVocab_->getEosId().toWordIndex() : (WordIndex)(key % vocabSize);
+=======
+*/
       bool dropHyp = !dropBatchEntries.empty() && dropBatchEntries[origBatchIdx] && factorGroup == 0;
       
       WordIndex wordIdx;
@@ -88,11 +119,13 @@ public:
       } else { // we are not dropping anything, just assign the normal index
         wordIdx = (WordIndex)(key % vocabSize);
       }
+//>>>>>>> intgemm_reintegrated_computestats
+
 
       // @TODO: We currently assign a log probability of 0 to all beam entries of the dropped batch entry, instead it might be a good idea to use
-      // the per Hyp pathScore without the current expansion (a bit hard to obtain). 
-      // For the case where we drop empty inputs, 0 is fine. For other use cases like a forced stop, the penultimate pathScore might be better. 
-      // For the empty hyp this would naturally result in 0, too. 
+      // the per Hyp pathScore without the current expansion (a bit hard to obtain).
+      // For the case where we drop empty inputs, 0 is fine. For other use cases like a forced stop, the penultimate pathScore might be better.
+      // For the empty hyp this would naturally result in 0, too.
       const float pathScore = dropHyp ? 0.f : nBestPathScores[i]; // 0 (Prob = 1, maximum score) if dropped or expanded path score for (batchIdx, beamHypIdx, word)
 
       const auto& beam = beams[origBatchIdx];
@@ -272,6 +305,8 @@ public:
   //**********************************************************************
   // main decoding function
   Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) {
+    float * cputensor = nullptr;
+
     auto factoredVocab = trgVocab_->tryAs<FactoredVocab>();
 #if 0   // use '1' here to disable factored decoding, e.g. for comparisons
     factoredVocab.reset();
@@ -286,7 +321,7 @@ public:
     const auto trgEosId = trgVocab_->getEosId();
     const auto trgUnkId = trgVocab_->getUnkId();
 
-    auto getNBestList = createGetNBestListFn(beamSize_, origDimBatch, graph->getDeviceId());
+    auto getNBestList = createGetNBestListFn(beamSize_, origDimBatch, graph->getDeviceId(), triePrune_);
 
     for(auto scorer : scorers_) {
       scorer->clear(graph);
@@ -307,7 +342,7 @@ public:
     }
 
     // create one beam per batch entry with sentence-start hypothesis
-    Beams beams(origDimBatch, Beam(beamSize_, Hypothesis::New())); // array [origDimBatch] of array [maxBeamSize] of Hypothesis, keeps full size through search.
+    Beams beams(origDimBatch, Beam(beamSize_, triePrune_?Hypothesis::New(trie_):Hypothesis::New(nullptr))); // array [origDimBatch] of array [maxBeamSize] of Hypothesis, keeps full size through search.
                                                                    // batch purging is determined from an empty sub-beam.
     std::vector<IndexType> batchIdxMap(origDimBatch); // Record at which batch entry a beam is looking.
                                                       // By default that corresponds to position in array,
@@ -345,6 +380,17 @@ public:
 
     IndexType currentDimBatch = origDimBatch;
     auto prevBatchIdxMap = batchIdxMap; // [origBatchIdx -> currentBatchIdx] but shifted by one time step
+    
+    // std::map<int, std::string> vocabMap;
+    // std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
+    // int count = 0;
+    // for( std::string line; getline( input, line ); ) {
+    //   boost::trim_right(line);
+    //   std::string token = line.substr(0, line.find(": "));
+    //   vocabMap[count] = token;
+    //   ++count;
+    // }    
+    
     // main loop over output time steps
     for (size_t t = 0; ; t++) {
       ABORT_IF(origDimBatch != beams.size(), "Lost a batch entry??");
@@ -401,9 +447,10 @@ public:
                   if(factorGroup == 0)
                     currentBatchIdx = prevBatchIdxMap[origBatchIdx]; // subselection may happen for factorGroup == 0
                   else
-                    currentBatchIdx = batchIdxMap[origBatchIdx];     // no subselection happens for factorGroup > 0,
-                                                                     // but we treat it like a next step, since a step
-                                                                     // happened for factorGroup == 0
+                    currentBatchIdx = batchIdxMap[origBatchIdx];
+                    // no subselection happens for factorGroup > 0,
+                    // but we treat it like a next step, since a step
+                    // happened for factorGroup == 0
                 }
 
                 auto hypIndex = (IndexType)(hyp->getPrevStateIndex() * currentDimBatch + currentBatchIdx); // (beamHypIdx, batchIdx), flattened, for index_select() operation
@@ -485,23 +532,68 @@ public:
         for(auto state : states)
           state->blacklist(expandedPathScores, batch);
 
+        // We are done with GPU operations with regards to model search. Safe to start copying the logits to the host
+        // While we do the trie search.
+        #ifdef CUDA_FOUND
+        if (!cputensor && expandedPathScores->val()->getDeviceId().type == DeviceType::gpu)
+          cputensor = getPinnedMemory(expandedPathScores->val()->shape().elements()*sizeof(float)*beamSize_); // Allocate pinned memory the first time round. At first beam is 1, so we need to allocate more.
+
+        if (expandedPathScores->val()->getDeviceId().type == DeviceType::gpu)
+          copyTensorToCpuAsync(cputensor, expandedPathScores->val()->data(), expandedPathScores->val()->shape().elements()*sizeof(float)); // Start asynchronous copy to CPU
+        #endif
+
         //**********************************************************************
         // perform beam search
 
-        // find N best amongst the (maxBeamSize * dimVocab) hypotheses
+
+        // shape of expandedPathScores: [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
+        // note maxBeamSize = 1 if first token (i.e. t = 0)
+        int dimBatch = expandedPathScores->shape()[-4];
+        int vocabSize = expandedPathScores->shape()[-1];
+        std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
+
+        size_t trieVocabBatchIdx = 0;
+        for (int i = 0; i < origDimBatch; i++) { // loop over sentences in a batch
+          for (int j = 0; j < beams[i].size(); j++) { // loop over hypotheses for a sentence
+            auto curTrieNode = beams[i][j]->GetTrieNode();
+            if (curTrieNode != nullptr) { // check for null pointers
+              for(auto&& node : *curTrieNode) {
+                // in each batch, the indices are original vocab_id plus hypothesis offset.
+                trieVocabIdxs[trieVocabBatchIdx].push_back(node.id_ + j * vocabSize);
+              }
+            }
+            if (t == 0 && factorGroup == 0) {
+              break; // break so we do not "overshoot" given score matrix shape
+            }
+          }
+          // ensure that there is a continuation. if there is no continuation,
+          // it means decoding has finished for the hypotheses
+          // scores matrix do not have scores for continuations of the hypoetheses
+          // Hence we skip it in the trieVocabIdxs matrix,
+          // otherwise increment trieVocabBatchIdx index.
+          if (trieVocabIdxs[trieVocabBatchIdx].size() != 0)
+            trieVocabBatchIdx += 1;
+        }
+
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
         std::vector<float> nBestPathScores;  // [currentDimBatch, maxBeamSize] flattened
-        getNBestList(/*in*/ expandedPathScores->val(), // [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
+
+        getNBestList(/*in*/ expandedPathScores->val(), // [currentDimBatch, 1, 1, dimVocab or dimShortlist] for first token and [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist] otherwise
                     /*N=*/ maxBeamSize,              // desired beam size
                     /*out*/ nBestPathScores, /*out*/ nBestKeys,
-                    /*first=*/t == 0 && factorGroup == 0); // @TODO: this is only used for checking presently, and should be removed altogether
+                    /*first=*/t == 0 && factorGroup == 0,
+                    // t,
+                    // beamSizeDivideBy,
+                    // beamSizeDivideMin,
+                    /*trieVocabs=*/trieVocabIdxs, // @TODO: this is only used for checking presently, and should be removed altogether
+                    cputensor);
         // Now, nBestPathScores contain N-best expandedPathScores for each batch and beam,
         // and nBestKeys for each their original location (batchIdx, beamHypIdx, word).
 
         // combine N-best sets with existing search space (beams) to updated search space
         beams = toHyps(nBestKeys, nBestPathScores,
                        /*nBestBeamSize*/expandedPathScores->shape()[-2], // used for interpretation of keys
-                       /*vocabSize=*/expandedPathScores->shape()[-1],    // used for interpretation of keys
+                       /*vocabSize=*/vocabSize,    // used for interpretation of keys
                        beams,
                        states,    // used for keeping track of per-ensemble-member path score
                        batch,     // only used for propagating alignment info
@@ -532,8 +624,34 @@ public:
 
       // this is the search space for the next output time step
       beams = purgedNewBeams;
+
+      // advance trie pointers
+        // int batchCounter = 0;
+        for(auto&& beam : beams) {
+          // int hypCounter = 0;
+          for (auto&& hyp : beam) {
+            if (!hyp->hasTrieContinuatuions()) {
+              // should never reach here
+              // std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
+            }
+            // Words hypWords = hyp->tracebackWords();
+            // std::cout << "hyp: " << hypCounter << ", words: ";
+            // for (auto word : hypWords) {
+              // std::cout << vocabMap[word.wordId_] << " ";
+            // }
+            // std::cout << std::endl;
+            // hypCounter += 1;
+          }
+          // batchCounter+= 1;
+        }
     } // end of main loop over output time steps
 
+    // std::cout << "--------\n";
+  
+#ifdef CUDA_FOUND
+    if (cputensor)
+      freePinnedMemory(cputensor);
+#endif
     return histories; // [origDimBatch][t][N best hyps]
   }
 };

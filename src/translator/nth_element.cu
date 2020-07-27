@@ -367,7 +367,8 @@ public:
                     size_t N,
                     std::vector<float>& outCosts,
                     std::vector<unsigned>& outKeys,
-                    const bool isFirst) {
+                    const bool isFirst,
+                    std::vector<std::vector<int>>& trieVocabIdxs) {
     cudaSetDevice(deviceId_.no);
 
     const auto vocabSize = scores->shape()[-1];
@@ -465,9 +466,24 @@ private:
 // Returns a lambda with the same signature as the getNBestList() function.
 GetNBestListFn createGetNBestListGPUFn(size_t beamSize, size_t dimBatch, DeviceId deviceId) {
   auto nth = New<NthElementGPU>(beamSize, dimBatch, deviceId);
-  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst) {
-    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst);
+  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, std::vector<std::vector<int>>& trieVocabIdxs, float * cputensor=nullptr) {
+    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, trieVocabIdxs);
   };
 }
 
+float * getPinnedMemory(size_t size) {
+  float * mem;
+  CUDA_CHECK(cudaMallocHost(&mem, size ));
+  return mem;
+}
+void freePinnedMemory(float * mem) {
+  CUDA_CHECK(cudaFreeHost(mem));
+}
+void copyTensorToCpuAsync(float * cpumem, float * gpumem, size_t size) {
+  CUDA_CHECK(cudaMemcpyAsync(cpumem, gpumem, size, cudaMemcpyDeviceToHost, 0));
+}
+
+void syncStreamZero() {
+  cudaStreamSynchronize(/* stream_ */ 0);
+}
 }  // namespace marian
